@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fast Link Ops</title>
+  <style>
+    :root {
+      --bg-a: #caebf8;
+      --bg-b: #f1e8cd;
+      --card: rgba(247, 249, 253, 0.92);
+      --ink: #142847;
+      --muted: #5f6f88;
+      --line: #d6ddea;
+      --accent: #0e7891;
+      --ok: #0f8a42;
+      --bad: #c62828;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px 16px;
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(120deg, var(--bg-a), var(--bg-b), var(--bg-a));
+      background-size: 200% 200%;
+      animation: bgShift 14s ease-in-out infinite;
+    }
+
+    .wrap {
+      max-width: 1050px;
+      margin: 0 auto;
+    }
+
+    .card {
+      position: relative;
+      background: var(--card);
+      border: 1px solid #e5e9f1;
+      border-radius: 24px;
+      padding: 26px;
+      box-shadow: 0 18px 35px rgba(16, 52, 92, 0.12);
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(14px);
+      animation: riseIn 640ms ease forwards;
+      margin-bottom: 18px;
+    }
+
+    .card:nth-of-type(2) { animation-delay: 90ms; }
+    .card:nth-of-type(3) { animation-delay: 170ms; }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: -40%;
+      background: radial-gradient(circle, rgba(21, 160, 184, 0.12), transparent 62%);
+      transform: translateX(-55%);
+      animation: sweep 8s linear infinite;
+      pointer-events: none;
+    }
+
+    .kicker {
+      margin: 0 0 6px;
+      color: #1f7c96;
+      letter-spacing: 0.2em;
+      font-size: 12px;
+      font-weight: 700;
+      position: relative;
+      z-index: 1;
+    }
+
+    h1 {
+      margin: 4px 0 10px;
+      font-size: clamp(32px, 6.5vw, 62px);
+      line-height: 1.04;
+      position: relative;
+      z-index: 1;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .sub, .muted, .hint {
+      color: var(--muted);
+      position: relative;
+      z-index: 1;
+    }
+
+    .sub { margin: 0 0 18px; font-size: 17px; }
+    .muted { margin: 0 0 10px; }
+    .hint { margin: 10px 0 0; font-size: 14px; }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    input {
+      width: 100%;
+      height: 52px;
+      border-radius: 13px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      font-size: 17px;
+      color: #2b3e61;
+      padding: 0 14px;
+      outline: none;
+      transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+    }
+
+    #urlInput {
+      height: 60px;
+      font-size: 23px;
+    }
+
+    input:focus {
+      border-color: #77bfd0;
+      box-shadow: 0 0 0 4px rgba(21, 160, 184, 0.18);
+      transform: translateY(-1px);
+    }
+
+    button {
+      border: 0;
+      border-radius: 13px;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #106f8c);
+      position: relative;
+      overflow: hidden;
+      transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(16, 111, 140, 0.2);
+      filter: brightness(1.05);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .btnMain {
+      height: 60px;
+      min-width: 150px;
+      font-size: 24px;
+    }
+
+    .btnSmall {
+      height: 52px;
+      min-width: 110px;
+      font-size: 16px;
+      padding: 0 12px;
+    }
+
+    .btnGhost {
+      background: #fff;
+      border: 1px solid #cfd8eb;
+      color: #233e6b;
+    }
+
+    .btnGhost:hover {
+      background: #f3f7ff;
+      box-shadow: none;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .status {
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.85);
+      font-size: 15px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .result {
+      margin-top: 12px;
+      color: var(--ok);
+      font-size: 17px;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 220ms ease, transform 220ms ease;
+      position: relative;
+      z-index: 1;
+    }
+
+    .result.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .result.error {
+      color: var(--bad);
+    }
+
+    .item {
+      position: relative;
+      z-index: 1;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 10px;
+      background: rgba(255, 255, 255, 0.85);
+      opacity: 0;
+      transform: translateY(8px);
+      animation: itemIn 340ms ease forwards;
+    }
+
+    .item a {
+      color: #145ec2;
+      word-break: break-all;
+    }
+
+    .statsGrid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      position: relative;
+      z-index: 1;
+    }
+
+    .stat {
+      border: 1px solid #dbe3f0;
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .statLabel {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .statValue {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1d3158;
+    }
+
+    .tiny {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 6px;
+      word-break: break-word;
+    }
+
+    .progressWrap {
+      border: 1px solid #dbe3f0;
+      border-radius: 999px;
+      height: 12px;
+      overflow: hidden;
+      background: #eef3fb;
+      margin-top: 8px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .progressBar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #1ea7bc, #0c8095);
+      transition: width 280ms ease;
+    }
+
+    .chartStat {
+      grid-column: 1 / -1;
+    }
+
+    .chartBox {
+      margin-top: 8px;
+      border: 1px solid #dbe3f0;
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 8px;
+    }
+
+    #clickChart {
+      width: 100%;
+      height: 190px;
+      display: block;
+    }
+
+    .pricingGrid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      position: relative;
+      z-index: 1;
+    }
+
+    .priceCard {
+      border: 1px solid #dbe3f0;
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.9);
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    }
+
+    .priceCard:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(15, 61, 112, 0.12);
+    }
+
+    .priceCard.currentPlan {
+      border-color: #1399b2;
+      box-shadow: 0 10px 20px rgba(19, 153, 178, 0.2);
+    }
+
+    .priceName {
+      font-size: 18px;
+      font-weight: 700;
+      color: #17305a;
+    }
+
+    .priceValue {
+      margin-top: 4px;
+      font-size: 30px;
+      font-weight: 800;
+      color: #0e6f87;
+    }
+
+    .featureList {
+      margin: 8px 0 12px;
+      padding-left: 18px;
+      color: #425777;
+      font-size: 14px;
+    }
+
+    @keyframes bgShift {
+      0% { background-position: 0% 40%; }
+      50% { background-position: 100% 60%; }
+      100% { background-position: 0% 40%; }
+    }
+
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes itemIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes sweep {
+      0% { transform: translateX(-60%); }
+      50% { transform: translateX(35%); }
+      100% { transform: translateX(-60%); }
+    }
+
+    @media (max-width: 860px) {
+      .card { padding: 20px; }
+      .row { flex-direction: column; }
+      .btnMain, #urlInput { width: 100%; height: 54px; font-size: 19px; }
+      .statsGrid { grid-template-columns: 1fr; }
+      .pricingGrid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
+      .card, .item, .result {
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <p class="kicker">ACCOUNT</p>
+      <h2>Account Access</h2>
+      <p class="sub">Create account once, then login and manage your own links.</p>
+      <div class="stack">
+        <div class="row">
+          <input id="emailInput" type="email" placeholder="Email (example@domain.com)" />
+          <input id="passwordInput" type="password" placeholder="Password (minimum 6 chars)" />
+        </div>
+        <div class="row">
+          <button id="signupBtn" class="btnSmall">Sign Up</button>
+          <button id="loginBtn" class="btnSmall">Login</button>
+          <button id="logoutBtn" class="btnSmall btnGhost">Logout</button>
+        </div>
+        <div id="authStatus" class="status">Not logged in.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="kicker">DASHBOARD</p>
+      <h2>Business Snapshot</h2>
+      <p class="muted">Plan, usage, and clicks summary for your account.</p>
+      <div id="planInfo" class="status">Plan: -</div>
+      <div class="progressWrap">
+        <div id="usageBar" class="progressBar"></div>
+      </div>
+      <p id="usageText" class="tiny">Usage: -</p>
+      <div class="statsGrid">
+        <div class="stat">
+          <div class="statLabel">Total Links</div>
+          <div id="totalLinks" class="statValue">0</div>
+        </div>
+        <div class="stat">
+          <div class="statLabel">Total Clicks</div>
+          <div id="totalClicks" class="statValue">0</div>
+        </div>
+        <div class="stat">
+          <div class="statLabel">Top Link Code</div>
+          <div id="topCode" class="statValue" style="font-size:20px;">-</div>
+          <div id="topMeta" class="tiny">No clicks yet.</div>
+        </div>
+        <div class="stat chartStat">
+          <div class="statLabel">Clicks Trend</div>
+          <div class="chartBox">
+            <svg id="clickChart" viewBox="0 0 620 190" role="img" aria-label="Clicks trend"></svg>
+          </div>
+          <div id="dailyClicks" class="tiny">No data yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="kicker">MONETIZATION</p>
+      <h2>Pricing Plans</h2>
+      <p class="muted">Choose a plan. This uses built-in plan switching for now.</p>
+      <div class="pricingGrid">
+        <article class="priceCard" data-plan="free">
+          <div class="priceName">Free</div>
+          <div class="priceValue">$0</div>
+          <ul class="featureList">
+            <li>Monthly limit applies</li>
+            <li>Basic analytics</li>
+            <li>Single user</li>
+          </ul>
+          <button id="planFreeBtn" class="btnSmall btnGhost">Use Free</button>
+        </article>
+        <article class="priceCard" data-plan="pro">
+          <div class="priceName">Pro</div>
+          <div class="priceValue">$9</div>
+          <ul class="featureList">
+            <li>Higher usage capacity</li>
+            <li>Advanced analytics</li>
+            <li>Priority support</li>
+          </ul>
+          <button id="planProBtn" class="btnSmall">Upgrade Pro</button>
+        </article>
+        <article class="priceCard" data-plan="business">
+          <div class="priceName">Business</div>
+          <div class="priceValue">$29</div>
+          <ul class="featureList">
+            <li>Team-ready scale</li>
+            <li>Full analytics visibility</li>
+            <li>Custom integrations</li>
+          </ul>
+          <button id="planBusinessBtn" class="btnSmall">Upgrade Business</button>
+        </article>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="kicker">FAST LINK OPS</p>
+      <h1>Shorten any URL in one click</h1>
+      <p class="sub">Paste a long URL and generate a short one instantly.</p>
+      <div class="row">
+        <input id="urlInput" placeholder="https://example.com/your/really/long/link" />
+        <button id="shortenBtn" class="btnMain">Shorten</button>
+      </div>
+      <div class="result" id="result"></div>
+    </section>
+
+    <section class="card">
+      <h2>Recent links</h2>
+      <p class="muted">Shows only links for logged-in user.</p>
+      <div id="recentList"></div>
+      <p class="hint">Tip: open short links to test redirect and click count.</p>
+    </section>
+  </div>
+
+  <script>
+    const AUTH_TOKEN_KEY = "url_shortener_token";
+    const AUTH_EMAIL_KEY = "url_shortener_email";
+
+    const emailInput = document.getElementById("emailInput");
+    const passwordInput = document.getElementById("passwordInput");
+    const signupBtn = document.getElementById("signupBtn");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const authStatus = document.getElementById("authStatus");
+    const planInfo = document.getElementById("planInfo");
+    const usageBar = document.getElementById("usageBar");
+    const usageText = document.getElementById("usageText");
+    const totalLinks = document.getElementById("totalLinks");
+    const totalClicks = document.getElementById("totalClicks");
+    const topCode = document.getElementById("topCode");
+    const topMeta = document.getElementById("topMeta");
+    const clickChart = document.getElementById("clickChart");
+    const dailyClicks = document.getElementById("dailyClicks");
+    const planFreeBtn = document.getElementById("planFreeBtn");
+    const planProBtn = document.getElementById("planProBtn");
+    const planBusinessBtn = document.getElementById("planBusinessBtn");
+    const priceCards = Array.from(document.querySelectorAll(".priceCard"));
+
+    const urlInput = document.getElementById("urlInput");
+    const shortenBtn = document.getElementById("shortenBtn");
+    const result = document.getElementById("result");
+    const recentList = document.getElementById("recentList");
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function getToken() {
+      return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+    }
+
+    function setSession(token, email) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+      localStorage.setItem(AUTH_EMAIL_KEY, email);
+    }
+
+    function clearSession() {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_EMAIL_KEY);
+    }
+
+    function clearDashboard() {
+      planInfo.textContent = "Plan: -";
+      usageText.textContent = "Usage: -";
+      usageBar.style.width = "0%";
+      totalLinks.textContent = "0";
+      totalClicks.textContent = "0";
+      topCode.textContent = "-";
+      topMeta.textContent = "No clicks yet.";
+      dailyClicks.textContent = "No data yet.";
+      clickChart.innerHTML = "";
+      setCurrentPlan("");
+    }
+
+    function setCurrentPlan(plan) {
+      priceCards.forEach((card) => {
+        card.classList.toggle("currentPlan", card.dataset.plan === plan);
+      });
+    }
+
+    function toY(value, max) {
+      const height = 190;
+      const paddingTop = 16;
+      const paddingBottom = 22;
+      const usable = height - paddingTop - paddingBottom;
+      const ratio = max <= 0 ? 0 : value / max;
+      return Math.round((height - paddingBottom) - (usable * ratio));
+    }
+
+    function renderChart(series) {
+      const width = 620;
+      const height = 190;
+      const paddingLeft = 18;
+      const paddingRight = 12;
+      const count = series.length;
+
+      if (!count) {
+        clickChart.innerHTML = "";
+        return;
+      }
+
+      const max = Math.max(...series.map((x) => x.clicks), 1);
+      const usableWidth = width - paddingLeft - paddingRight;
+      const stepX = count <= 1 ? 0 : usableWidth / (count - 1);
+
+      const points = series.map((x, i) => {
+        const px = Math.round(paddingLeft + (i * stepX));
+        const py = toY(x.clicks, max);
+        return { px, py, clicks: x.clicks };
+      });
+
+      const linePath = points
+        .map((p, i) => (i === 0 ? "M " : "L ") + p.px + " " + p.py)
+        .join(" ");
+
+      const areaPath = linePath + " L " + points[points.length - 1].px + " " + (height - 22) +
+        " L " + points[0].px + " " + (height - 22) + " Z";
+
+      const circles = points
+        .map((p) => `<circle cx="${p.px}" cy="${p.py}" r="3.2" fill="#0e7891"></circle>`)
+        .join("");
+
+      clickChart.innerHTML = `
+        <line x1="${paddingLeft}" y1="${height - 22}" x2="${width - paddingRight}" y2="${height - 22}" stroke="#d8e1ef" stroke-width="1"></line>
+        <line x1="${paddingLeft}" y1="16" x2="${paddingLeft}" y2="${height - 22}" stroke="#d8e1ef" stroke-width="1"></line>
+        <path d="${areaPath}" fill="rgba(14, 120, 145, 0.13)"></path>
+        <path d="${linePath}" fill="none" stroke="#0e7891" stroke-width="2.4" stroke-linecap="round"></path>
+        ${circles}
+      `;
+    }
+
+    function setAuthUI() {
+      const token = getToken();
+      const email = localStorage.getItem(AUTH_EMAIL_KEY);
+      if (token && email) {
+        authStatus.innerHTML = "Logged in as <strong>" + escapeHtml(email) + "</strong>";
+        urlInput.disabled = false;
+        shortenBtn.disabled = false;
+      } else {
+        authStatus.textContent = "Not logged in.";
+        urlInput.disabled = false;
+        shortenBtn.disabled = false;
+        recentList.innerHTML = '<div class="item">Login to view your links.</div>';
+        clearDashboard();
+      }
+    }
+
+    function showMessage(msg, type) {
+      result.className = "result show" + (type === "error" ? " error" : "");
+      result.innerHTML = msg;
+    }
+
+    async function copyText(value) {
+      try {
+        await navigator.clipboard.writeText(value);
+        showMessage("Copied short URL to clipboard.");
+      } catch {
+        showMessage("Copy failed. Please copy manually.", "error");
+      }
+    }
+
+    async function authFetch(url, options) {
+      const token = getToken();
+      const headers = Object.assign({}, options && options.headers ? options.headers : {});
+      if (token) {
+        headers.Authorization = "Bearer " + token;
+      }
+      return fetch(url, Object.assign({}, options, { headers }));
+    }
+
+    async function loadRecent() {
+      if (!getToken()) {
+        recentList.innerHTML = '<div class="item">Login to view your links.</div>';
+        return;
+      }
+
+      try {
+        const res = await authFetch("/api/links");
+        if (res.status === 401) {
+          clearSession();
+          setAuthUI();
+          recentList.innerHTML = '<div class="item">Session expired. Please login again.</div>';
+          return;
+        }
+        const data = await res.json();
+        recentList.innerHTML = "";
+
+        if (!Array.isArray(data) || !data.length) {
+          recentList.innerHTML = '<div class="item">No links yet. Create your first short URL above.</div>';
+          return;
+        }
+
+        data.slice(0, 10).forEach((x, index) => {
+          const shortPath = "/" + x.short_code;
+          const safeOriginal = escapeHtml(x.original_url);
+          const item = document.createElement("div");
+          item.className = "item";
+          item.style.animationDelay = String(index * 45) + "ms";
+          item.innerHTML =
+            "<div><strong>Short:</strong> <a href=\"" + shortPath + "\" target=\"_blank\">" + shortPath + "</a></div>" +
+            "<div><strong>Original:</strong> <a href=\"" + safeOriginal + "\" target=\"_blank\">" + safeOriginal + "</a></div>" +
+            "<div class=\"muted\">Clicks: " + x.click_count + "</div>";
+          recentList.appendChild(item);
+        });
+      } catch {
+        recentList.innerHTML = '<div class="item">Could not load recent links right now.</div>';
+      }
+    }
+
+    function formatDaily(series) {
+      if (!Array.isArray(series) || !series.length) return "No data yet.";
+      return series.map((x) => x.day + ": " + x.clicks).join(" | ");
+    }
+
+    function build14DaySeries(rawSeries) {
+      const map = new Map();
+      if (Array.isArray(rawSeries)) {
+        rawSeries.forEach((x) => {
+          if (x && x.day) {
+            map.set(String(x.day), Number(x.clicks || 0));
+          }
+        });
+      }
+
+      const out = [];
+      const today = new Date();
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const day = d.toISOString().slice(0, 10);
+        out.push({ day, clicks: map.get(day) || 0 });
+      }
+      return out;
+    }
+
+    async function loadDashboard() {
+      if (!getToken()) {
+        clearDashboard();
+        return;
+      }
+
+      try {
+        const [meRes, analyticsRes] = await Promise.all([
+          authFetch("/api/me"),
+          authFetch("/api/analytics/summary")
+        ]);
+
+        if (meRes.status === 401 || analyticsRes.status === 401) {
+          clearSession();
+          setAuthUI();
+          return;
+        }
+
+        const me = await meRes.json();
+        const analytics = await analyticsRes.json();
+
+        if (!meRes.ok || !analyticsRes.ok) {
+          clearDashboard();
+          return;
+        }
+
+        const planText = (me.plan || "free").toUpperCase();
+        planInfo.innerHTML = "Plan: <strong>" + escapeHtml(planText) + "</strong>";
+        setCurrentPlan(me.plan || "free");
+
+        if (typeof me.monthlyLimit === "number") {
+          const used = Number(me.monthlyUsed || 0);
+          const limit = Number(me.monthlyLimit || 1);
+          const pct = Math.min(100, Math.round((used / limit) * 100));
+          usageText.textContent = "Usage this month: " + used + " / " + limit;
+          usageBar.style.width = String(pct) + "%";
+        } else {
+          usageText.textContent = "Usage this month: Unlimited";
+          usageBar.style.width = "100%";
+        }
+
+        totalLinks.textContent = String(analytics.totalLinks || 0);
+        totalClicks.textContent = String(analytics.totalClicks || 0);
+
+        if (analytics.topLink) {
+          topCode.textContent = analytics.topLink.short_code || "-";
+          topMeta.textContent = "Clicks: " + (analytics.topLink.click_count || 0);
+        } else {
+          topCode.textContent = "-";
+          topMeta.textContent = "No clicks yet.";
+        }
+
+        const series14 = build14DaySeries(analytics.dailyClicks);
+        renderChart(series14);
+        const clicks14 = series14.reduce((sum, x) => sum + x.clicks, 0);
+        dailyClicks.textContent = "Total recent clicks: " + clicks14;
+      } catch {
+        clearDashboard();
+      }
+    }
+
+    async function changePlan(plan) {
+      if (!getToken()) {
+        authStatus.textContent = "Login first to change plan.";
+        return;
+      }
+
+      try {
+        const res = await authFetch("/api/billing/mock-upgrade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          authStatus.textContent = data.error || "Could not change plan.";
+          return;
+        }
+        authStatus.textContent = "Plan updated to " + plan.toUpperCase() + ".";
+        await loadDashboard();
+      } catch {
+        authStatus.textContent = "Could not contact server.";
+      }
+    }
+
+    async function runAuth(mode) {
+      const email = emailInput.value.trim().toLowerCase();
+      const password = passwordInput.value.trim();
+      if (!email || !password) {
+        authStatus.textContent = "Enter email and password.";
+        return;
+      }
+
+      const endpoint = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+      signupBtn.disabled = true;
+      loginBtn.disabled = true;
+      authStatus.textContent = mode === "signup" ? "Creating account..." : "Logging in...";
+
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          authStatus.textContent = data.error || "Authentication failed.";
+          return;
+        }
+        setSession(data.token, data.user.email);
+        authStatus.innerHTML = "Logged in as <strong>" + escapeHtml(data.user.email) + "</strong>";
+        passwordInput.value = "";
+        setAuthUI();
+        await loadDashboard();
+        await loadRecent();
+      } catch {
+        authStatus.textContent = "Could not contact server.";
+      } finally {
+        signupBtn.disabled = false;
+        loginBtn.disabled = false;
+      }
+    }
+
+    signupBtn.addEventListener("click", () => runAuth("signup"));
+    loginBtn.addEventListener("click", () => runAuth("login"));
+    logoutBtn.addEventListener("click", () => {
+      clearSession();
+      setAuthUI();
+      result.className = "result";
+      result.textContent = "";
+      authStatus.textContent = "Logged out successfully.";
+      clearDashboard();
+    });
+
+    planProBtn.addEventListener("click", () => changePlan("pro"));
+    planBusinessBtn.addEventListener("click", () => changePlan("business"));
+    planFreeBtn.addEventListener("click", () => changePlan("free"));
+
+    shortenBtn.addEventListener("click", async () => {
+      const url = urlInput.value.trim();
+      if (!url) {
+        showMessage("Please paste a URL first.", "error");
+        return;
+      }
+
+      if (!getToken()) {
+        showMessage("Login first to create links.", "error");
+        return;
+      }
+
+      shortenBtn.disabled = true;
+      shortenBtn.textContent = "Working...";
+      try {
+        const res = await authFetch("/api/shorten", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (res.status === 401) {
+          clearSession();
+          setAuthUI();
+          showMessage("Session expired. Login again.", "error");
+          return;
+        }
+
+        if (!res.ok) {
+          showMessage(escapeHtml(data.error || "Request failed."), "error");
+          return;
+        }
+
+        const safeShortUrl = escapeHtml(data.shortUrl);
+        showMessage(
+          "Short URL: <a href=\"" + safeShortUrl + "\" target=\"_blank\">" + safeShortUrl + "</a> " +
+          "<button class=\"btnSmall btnGhost\" id=\"copyBtn\" type=\"button\">Copy</button>"
+        );
+
+        const copyBtn = document.getElementById("copyBtn");
+        if (copyBtn) {
+          copyBtn.addEventListener("click", () => copyText(data.shortUrl));
+        }
+
+        urlInput.value = "";
+        await loadDashboard();
+        await loadRecent();
+      } catch {
+        showMessage("Could not contact server.", "error");
+      } finally {
+        shortenBtn.disabled = false;
+        shortenBtn.textContent = "Shorten";
+      }
+    });
+
+    urlInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !shortenBtn.disabled) {
+        shortenBtn.click();
+      }
+    });
+
+    passwordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        runAuth("login");
+      }
+    });
+
+    setAuthUI();
+    loadDashboard();
+    loadRecent();
+  </script>
+</body>
+</html>
