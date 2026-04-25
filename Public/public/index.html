@@ -442,44 +442,6 @@
     </section>
 
     <section class="card">
-      <p class="kicker">MONETIZATION</p>
-      <h2>Pricing Plans</h2>
-      <p class="muted">Choose a plan. This uses built-in plan switching for now.</p>
-      <div class="pricingGrid">
-        <article class="priceCard" data-plan="free">
-          <div class="priceName">Free</div>
-          <div class="priceValue">$0</div>
-          <ul class="featureList">
-            <li>Monthly limit applies</li>
-            <li>Basic analytics</li>
-            <li>Single user</li>
-          </ul>
-          <button id="planFreeBtn" class="btnSmall btnGhost">Use Free</button>
-        </article>
-        <article class="priceCard" data-plan="pro">
-          <div class="priceName">Pro</div>
-          <div class="priceValue">$9</div>
-          <ul class="featureList">
-            <li>Higher usage capacity</li>
-            <li>Advanced analytics</li>
-            <li>Priority support</li>
-          </ul>
-          <button id="planProBtn" class="btnSmall">Upgrade Pro</button>
-        </article>
-        <article class="priceCard" data-plan="business">
-          <div class="priceName">Business</div>
-          <div class="priceValue">$29</div>
-          <ul class="featureList">
-            <li>Team-ready scale</li>
-            <li>Full analytics visibility</li>
-            <li>Custom integrations</li>
-          </ul>
-          <button id="planBusinessBtn" class="btnSmall">Upgrade Business</button>
-        </article>
-      </div>
-    </section>
-
-    <section class="card">
       <p class="kicker">FAST LINK OPS</p>
       <h1>Shorten any URL in one click</h1>
       <p class="sub">Paste a long URL and generate a short one instantly.</p>
@@ -492,7 +454,7 @@
 
     <section class="card">
       <h2>Recent links</h2>
-      <p class="muted">Shows only links for logged-in user.</p>
+      <p class="muted">Shows your links when logged in, otherwise recent public links.</p>
       <div id="recentList"></div>
       <p class="hint">Tip: open short links to test redirect and click count.</p>
     </section>
@@ -517,10 +479,6 @@
     const topMeta = document.getElementById("topMeta");
     const clickChart = document.getElementById("clickChart");
     const dailyClicks = document.getElementById("dailyClicks");
-    const planFreeBtn = document.getElementById("planFreeBtn");
-    const planProBtn = document.getElementById("planProBtn");
-    const planBusinessBtn = document.getElementById("planBusinessBtn");
-    const priceCards = Array.from(document.querySelectorAll(".priceCard"));
 
     const urlInput = document.getElementById("urlInput");
     const shortenBtn = document.getElementById("shortenBtn");
@@ -560,13 +518,6 @@
       topMeta.textContent = "No clicks yet.";
       dailyClicks.textContent = "No data yet.";
       clickChart.innerHTML = "";
-      setCurrentPlan("");
-    }
-
-    function setCurrentPlan(plan) {
-      priceCards.forEach((card) => {
-        card.classList.toggle("currentPlan", card.dataset.plan === plan);
-      });
     }
 
     function toY(value, max) {
@@ -660,13 +611,9 @@
     }
 
     async function loadRecent() {
-      if (!getToken()) {
-        recentList.innerHTML = '<div class="item">Login to view your links.</div>';
-        return;
-      }
-
       try {
-        const res = await authFetch("/api/links");
+        const hasToken = Boolean(getToken());
+        const res = hasToken ? await authFetch("/api/links") : await fetch("/api/links-public");
         if (res.status === 401) {
           clearSession();
           setAuthUI();
@@ -677,7 +624,9 @@
         recentList.innerHTML = "";
 
         if (!Array.isArray(data) || !data.length) {
-          recentList.innerHTML = '<div class="item">No links yet. Create your first short URL above.</div>';
+          recentList.innerHTML = hasToken
+            ? '<div class="item">No links yet. Create your first short URL above.</div>'
+            : '<div class="item">No public links yet. Create one above.</div>';
           return;
         }
 
@@ -752,7 +701,6 @@
 
         const planText = (me.plan || "free").toUpperCase();
         planInfo.innerHTML = "Plan: <strong>" + escapeHtml(planText) + "</strong>";
-        setCurrentPlan(me.plan || "free");
 
         if (typeof me.monthlyLimit === "number") {
           const used = Number(me.monthlyUsed || 0);
@@ -782,30 +730,6 @@
         dailyClicks.textContent = "Total recent clicks: " + clicks14;
       } catch {
         clearDashboard();
-      }
-    }
-
-    async function changePlan(plan) {
-      if (!getToken()) {
-        authStatus.textContent = "Login first to change plan.";
-        return;
-      }
-
-      try {
-        const res = await authFetch("/api/billing/mock-upgrade", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          authStatus.textContent = data.error || "Could not change plan.";
-          return;
-        }
-        authStatus.textContent = "Plan updated to " + plan.toUpperCase() + ".";
-        await loadDashboard();
-      } catch {
-        authStatus.textContent = "Could not contact server.";
       }
     }
 
@@ -858,10 +782,6 @@
       clearDashboard();
     });
 
-    planProBtn.addEventListener("click", () => changePlan("pro"));
-    planBusinessBtn.addEventListener("click", () => changePlan("business"));
-    planFreeBtn.addEventListener("click", () => changePlan("free"));
-
     shortenBtn.addEventListener("click", async () => {
       const url = urlInput.value.trim();
       if (!url) {
@@ -869,15 +789,16 @@
         return;
       }
 
-      if (!getToken()) {
-        showMessage("Login first to create links.", "error");
-        return;
-      }
-
       shortenBtn.disabled = true;
       shortenBtn.textContent = "Working...";
       try {
-        const res = await authFetch("/api/shorten", {
+        const hasToken = Boolean(getToken());
+        const endpoint = hasToken ? "/api/shorten" : "/api/shorten-public";
+        const res = hasToken ? await authFetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        }) : await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url })
